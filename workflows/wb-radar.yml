@@ -1,0 +1,35 @@
+name: WB Radar
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wb-radar
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run bot
+        env:
+          WB_RADAR_TELEGRAM_TOKEN: ${{ secrets.WB_RADAR_TELEGRAM_TOKEN }}
+        run: python3 wb_radar_bot.py
+
+      - name: Commit state
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state/wb_radar_state.json
+          git diff --cached --quiet || git commit -m "Update WB Radar state"
+          git push
