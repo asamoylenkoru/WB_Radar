@@ -65,6 +65,68 @@ def request_json(url: str, *, method: str = "GET", data: dict[str, Any] | None =
     return json.loads(raw)
 
 
+def basket_hosts() -> list[str]:
+    hosts = [f"https://basket-{index:02d}.wbbasket.ru" for index in range(1, 41)]
+    hosts += [f"https://basket-{index:02d}.wb.ru" for index in range(1, 41)]
+    return hosts
+
+
+def basket_base_url(nm_id: str) -> str | None:
+    nm = int(nm_id)
+    vol = nm // 100000
+    part = nm // 1000
+    for host in basket_hosts():
+        base = f"{host}/vol{vol}/part{part}/{nm}"
+        try:
+            request_json(f"{base}/info/ru/card.json", timeout=8)
+            return base
+        except Exception:
+            continue
+    return None
+
+
+def fetch_product_from_basket(nm_id: str) -> Snapshot | None:
+    base = basket_base_url(nm_id)
+    if not base:
+        return None
+
+    card = request_json(f"{base}/info/ru/card.json", timeout=12)
+    brand = str((card.get("selling") or {}).get("brand_name") or "")
+    name = str(card.get("imt_name") or "Товар Wildberries")
+    price = None
+    old_price = None
+    discount = None
+
+    try:
+        history = request_json(f"{base}/info/price-history.json", timeout=12)
+    except Exception:
+        history = []
+    if isinstance(history, list) and history:
+        prices = [
+            money_from_units((item.get("price") or {}).get("RUB"))
+            for item in history
+            if isinstance(item, dict)
+        ]
+        prices = [item for item in prices if item is not None]
+        if prices:
+            price = prices[-1]
+            old_price = prices[-2] if len(prices) > 1 else None
+            if old_price and price and old_price > price:
+                discount = round((old_price - price) / old_price * 100)
+
+    return Snapshot(
+        nm_id=nm_id,
+        name=name,
+        brand=brand,
+        price_rub=price,
+        old_price_rub=old_price,
+        discount_percent=discount,
+        total_qty=None,
+        url=f"https://www.wildberries.ru/catalog/{nm_id}/detail.aspx",
+        checked_at=int(time.time()),
+    )
+
+
 def telegram_call(token: str, method: str, payload: dict[str, Any] | None = None) -> Any:
     url = TELEGRAM_API.format(token=token, method=method)
     return request_json(url, method="POST" if payload else "GET", data=payload)
@@ -177,6 +239,9 @@ def fetch_product(nm_id: str) -> Snapshot:
             url=f"https://www.wildberries.ru/catalog/{nm_id}/detail.aspx",
             checked_at=int(time.time()),
         )
+    fallback = fetch_product_from_basket(nm_id)
+    if fallback:
+        return fallback
     raise RuntimeError(f"Wildberries product {nm_id} was not found or API failed: {last_error}")
 
 
