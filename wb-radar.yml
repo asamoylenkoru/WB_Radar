@@ -1,9 +1,13 @@
+# WB Radar workflow is DISABLED.
+# Previously ran every 30 minutes via GitHub Actions and sent failure emails.
+# To re-enable: move this file to `.github/workflows/wb-radar.yml` and restore triggers.
+
 name: WB Radar
 
+# No triggers — workflow will not run until re-enabled.
 on:
-  schedule:
-    - cron: "*/30 * * * *"
   workflow_dispatch:
+    # Manual runs only after this file is restored under .github/workflows/
 
 permissions:
   contents: write
@@ -14,6 +18,7 @@ concurrency:
 
 jobs:
   run:
+    if: false  # permanently disabled
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
